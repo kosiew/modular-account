@@ -27,6 +27,26 @@ import {MultiOwnerModularAccountFactory} from "../../src/factory/MultiOwnerModul
 import {IEntryPoint} from "../../src/interfaces/erc4337/IEntryPoint.sol";
 import {MultiOwnerPlugin} from "../../src/plugins/owner/MultiOwnerPlugin.sol";
 
+
+contract MaliciousReentrancy {
+    MultiOwnerModularAccountFactory public factory;
+
+    constructor(MultiOwnerModularAccountFactory _factory) {
+        factory = MultiOwnerModularAccountFactory(_factory);
+    }
+
+    // Fallback function to receive ETH and perform reentrancy attack
+    receive() external payable {
+        if (address(factory).balance >= 1 ether) {
+            factory.withdraw(payable(address(this)), 1 ether);
+        }
+    }
+
+    function attack() public payable {
+        factory.withdraw(payable(address(this)), 1 ether);
+    }
+}
+
 contract MultiOwnerModularAccountFactoryTest is Test {
     using ECDSA for bytes32;
 
@@ -47,6 +67,8 @@ contract MultiOwnerModularAccountFactoryTest is Test {
         0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
     uint256 internal constant _MAX_OWNERS_ON_CREATION = 100;
 
+    MaliciousReentrancy public attacker;
+
     function setUp() public {
         owners.push(owner1);
         owners.push(owner2);
@@ -61,6 +83,17 @@ contract MultiOwnerModularAccountFactoryTest is Test {
             largeOwners.push(address(i + 1));
         }
         vm.deal(address(this), 100 ether);
+        address payable attackerAddress = payable(address(new MaliciousReentrancy(address(factory))));
+        attacker = MaliciousReentrancy(attackerAddress);
+    }
+
+    function testReentrancyAttack() public {
+        vm.deal(address(attacker), 10 ether);  // Send some ether to the attacker to fund the attack
+        attacker.attack{value: 1 ether}();  // Start the attack with 1 ether
+
+        // Check balances or states post-attack to assert no funds were stolen or no unintended state changes occurred
+        assertTrue(address(factory).balance == 9 ether);  // Assuming initial balance was 10 ether
+        // Other state checks can be added here
     }
 
     function test_addressMatch() public {
