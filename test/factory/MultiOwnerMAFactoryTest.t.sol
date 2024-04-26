@@ -30,7 +30,7 @@ import {MultiOwnerPlugin} from "../../src/plugins/owner/MultiOwnerPlugin.sol";
 contract ReentrancyAttack {
     MultiOwnerModularAccountFactory public factory;
 
-    constructor(address _factory) {
+    constructor(address payable _factory) {
         factory = MultiOwnerModularAccountFactory(_factory);
     }
 
@@ -80,9 +80,10 @@ contract MultiOwnerModularAccountFactoryTest is Test {
         vm.deal(address(this), 100 ether);
     }
 
-        function testReentrancyOnWithdraw() public {
-        ReentrancyAttack attacker = new ReentrancyAttack(address(factory));
-        address(attacker).call{value: 10 ether}("");
+    function testReentrancyOnWithdraw() public {
+        ReentrancyAttack attacker = new ReentrancyAttack(payable(address(factory)));
+        (bool success, ) = address(attacker).call{value: 10 ether}("");
+        require(success, "Attack call failed");
 
         vm.startPrank(owner1);
         factory.addStake{value: 10 ether}(10 hours, 10 ether);
