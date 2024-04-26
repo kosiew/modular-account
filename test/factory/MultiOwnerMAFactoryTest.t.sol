@@ -27,6 +27,23 @@ import {MultiOwnerModularAccountFactory} from "../../src/factory/MultiOwnerModul
 import {IEntryPoint} from "../../src/interfaces/erc4337/IEntryPoint.sol";
 import {MultiOwnerPlugin} from "../../src/plugins/owner/MultiOwnerPlugin.sol";
 
+contract ReentrancyAttack {
+    MultiOwnerModularAccountFactory public factory;
+
+    constructor(address _factory) {
+        factory = MultiOwnerModularAccountFactory(_factory);
+    }
+
+    // Fallback function used to call withdraw again during reentrancy
+    receive() external payable {
+        factory.withdraw(payable(address(this)), address(0), 1 ether);
+    }
+
+    function attack() external payable {
+        factory.withdraw(payable(address(this)), address(0), 1 ether);
+    }
+}
+
 contract MultiOwnerModularAccountFactoryTest is Test {
     using ECDSA for bytes32;
 
@@ -61,6 +78,19 @@ contract MultiOwnerModularAccountFactoryTest is Test {
             largeOwners.push(address(i + 1));
         }
         vm.deal(address(this), 100 ether);
+    }
+
+        function testReentrancyOnWithdraw() public {
+        ReentrancyAttack attacker = new ReentrancyAttack(address(factory));
+        address(attacker).call{value: 10 ether}("");
+
+        vm.startPrank(owner1);
+        factory.addStake{value: 10 ether}(10 hours, 10 ether);
+        assertTrue(address(factory).balance == 10 ether, "Initial balance should be set");
+
+        vm.expectRevert("Reentrant call detected");
+        attacker.attack();
+        vm.stopPrank();
     }
 
     function test_addressMatch() public {
